@@ -230,16 +230,11 @@ def process_matches(matches, tickets, devices):
             if match_status == 'FINISHED' and event_key not in notified_events:
                 notified_events.add(event_key)
                 
-                # Determinar resultado
+                # Evaluar apuesta según tipo
                 selection = bet.get('selection', '1')
-                if home_score > away_score:
-                    result = '1'
-                elif away_score > home_score:
-                    result = '2'
-                else:
-                    result = 'X'
+                total_goals = home_score + away_score
                 
-                won = selection == result
+                won = evaluate_bet(selection, home_score, away_score, total_goals)
                 
                 for device in devices:
                     if won:
@@ -256,6 +251,67 @@ def process_matches(matches, tickets, devices):
                             f"Final: {home_score} - {away_score}",
                             {'matchId': str(match_id), 'type': 'lost'}
                         )
+
+def evaluate_bet(selection, home_score, away_score, total_goals):
+    """Evalúa si la apuesta fue ganadora según el tipo de mercado"""
+    
+    # 1X2 - Resultado final
+    if selection == '1':
+        return home_score > away_score
+    elif selection == 'X':
+        return home_score == away_score
+    elif selection == '2':
+        return away_score > home_score
+    
+    # Doble Oportunidad
+    elif selection == '1X':
+        return home_score >= away_score
+    elif selection == 'X2':
+        return away_score >= home_score
+    elif selection == '12':
+        return home_score != away_score
+    
+    # Over/Under
+    elif selection == 'O1.5':
+        return total_goals > 1.5
+    elif selection == 'O2.5':
+        return total_goals > 2.5
+    elif selection == 'O3.5':
+        return total_goals > 3.5
+    elif selection == 'U1.5':
+        return total_goals < 1.5
+    elif selection == 'U2.5':
+        return total_goals < 2.5
+    elif selection == 'U3.5':
+        return total_goals < 3.5
+    
+    # BTTS (Ambos marcan)
+    elif selection == 'BTTS_Y':
+        return home_score > 0 and away_score > 0
+    elif selection == 'BTTS_N':
+        return home_score == 0 or away_score == 0
+    
+    # Handicap
+    elif selection == 'H1-1':
+        return (home_score - 1) > away_score
+    elif selection == 'H1+1':
+        return (home_score + 1) > away_score
+    elif selection == 'H2-1':
+        return away_score - 1 > home_score
+    elif selection == 'H2+1':
+        return away_score + 1 > home_score
+    
+    # Resultado exacto
+    elif selection.startswith('CS'):
+        exact_score = selection.replace('CS', '')
+        parts = exact_score.split('-')
+        if len(parts) == 2:
+            expected_home = int(parts[0])
+            expected_away = int(parts[1])
+            return home_score == expected_home and away_score == expected_away
+    
+    # Default: no ganó
+    return False
 
 # =====================
 # LOOP PRINCIPAL
