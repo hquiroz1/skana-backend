@@ -149,9 +149,12 @@ def send_notification(token, title, body, data=None):
 # =====================
 # Cache para evitar notificaciones duplicadas
 notified_events = set()
+# Cache para guardar marcadores anteriores
+previous_scores = {}
 
 def process_matches(matches, tickets, devices):
     """Procesa partidos y envía notificaciones según los tickets"""
+    global previous_scores
     
     for ticket in tickets:
         if ticket.get('status') == 'won' or ticket.get('status') == 'lost':
@@ -171,10 +174,16 @@ def process_matches(matches, tickets, devices):
             away_team = match.get('awayTeam', {}).get('name', 'Visitante')
             match_status = match.get('status')
             
-            # Obtener marcador
+            # Obtener marcador actual
             score = match.get('score', {})
             home_score = score.get('fullTime', {}).get('home') or score.get('halfTime', {}).get('home') or 0
             away_score = score.get('fullTime', {}).get('away') or score.get('halfTime', {}).get('away') or 0
+            current_score = f"{home_score}-{away_score}"
+            
+            # Obtener marcador anterior
+            prev = previous_scores.get(match_id, {'home': 0, 'away': 0})
+            prev_home = prev.get('home', 0)
+            prev_away = prev.get('away', 0)
             
             # Evento: Partido comenzó
             event_key = f"{match_id}_started"
@@ -188,18 +197,33 @@ def process_matches(matches, tickets, devices):
                         {'matchId': str(match_id), 'type': 'started'}
                     )
             
-            # Evento: Gol (cambio de marcador)
+            # Evento: Gol (detectar quién marcó)
             score_key = f"{match_id}_score_{home_score}_{away_score}"
             if match_status in ['IN_PLAY', 'LIVE', 'PAUSED'] and score_key not in notified_events:
-                if home_score > 0 or away_score > 0:  # Solo si hay goles
+                # Detectar si hubo gol
+                if home_score > prev_home:
+                    # Gol del equipo local
                     notified_events.add(score_key)
                     for device in devices:
                         send_notification(
                             device['token'],
-                            f"⚽ ¡GOL! {home_team} vs {away_team}",
-                            f"Marcador: {home_score} - {away_score}",
-                            {'matchId': str(match_id), 'type': 'goal'}
+                            f"⚽ ¡GOL de {home_team}!",
+                            f"{home_team} {home_score} - {away_score} {away_team}",
+                            {'matchId': str(match_id), 'type': 'goal', 'scorer': 'home'}
                         )
+                elif away_score > prev_away:
+                    # Gol del equipo visitante
+                    notified_events.add(score_key)
+                    for device in devices:
+                        send_notification(
+                            device['token'],
+                            f"⚽ ¡GOL de {away_team}!",
+                            f"{home_team} {home_score} - {away_score} {away_team}",
+                            {'matchId': str(match_id), 'type': 'goal', 'scorer': 'away'}
+                        )
+            
+            # Actualizar marcador anterior
+            previous_scores[match_id] = {'home': home_score, 'away': away_score}
             
             # Evento: Partido terminó
             event_key = f"{match_id}_finished"
